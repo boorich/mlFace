@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Plus, Trash2, RefreshCw, Search, Check, Info, AlertCircle } from "lucide-react";
+import { X, Plus, Trash2, RefreshCw, Search, Check, Info, AlertCircle, Server, ExternalLink } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -31,6 +31,9 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     status: 'success' | 'error' | 'testing';
     message: string;
   } | null>(null);
+  
+  // Track active MCP connections
+  const [activeConnections, setActiveConnections] = useState<Record<string, boolean>>({});
 
   // Update local state when settings change
   useEffect(() => {
@@ -39,6 +42,28 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     setSelectedDefaultModel(settings.defaultModelId || "");
     setAutoSelectModel(settings.autoSelectModel || false);
   }, [settings]);
+  
+  // Check connections for all endpoints on mount
+  useEffect(() => {
+    const checkAllConnections = async () => {
+      if (!mcpEndpoints.length) return;
+      
+      const connectionResults: Record<string, boolean> = {};
+      
+      for (const endpoint of mcpEndpoints) {
+        try {
+          const result = await testMCPConnection(endpoint);
+          connectionResults[endpoint] = result.success;
+        } catch {
+          connectionResults[endpoint] = false;
+        }
+      }
+      
+      setActiveConnections(connectionResults);
+    };
+    
+    checkAllConnections();
+  }, [mcpEndpoints]);
 
   // If the dialog is not open, don't render anything
   if (!isOpen) return null;
@@ -66,6 +91,13 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     if (connectionStatus?.endpoint === endpoint) {
       setConnectionStatus(null);
     }
+    
+    // Update active connections
+    setActiveConnections(prev => {
+      const updated = {...prev};
+      delete updated[endpoint];
+      return updated;
+    });
   };
 
   const handleThemeChange = (newTheme: ThemeMode) => {
@@ -92,6 +124,12 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         message: result.message,
       });
       
+      // Update connection status for this endpoint
+      setActiveConnections(prev => ({
+        ...prev,
+        [newEndpoint]: result.success
+      }));
+      
       // If successful, enable the add button
       if (result.success) {
         // Auto-add the endpoint if it's not already in the list
@@ -107,6 +145,12 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         status: 'error',
         message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
+      
+      // Update connection status for this endpoint
+      setActiveConnections(prev => ({
+        ...prev,
+        [newEndpoint]: false
+      }));
     } finally {
       setIsTesting(false);
     }
@@ -127,6 +171,21 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         
         if (newEndpoints.length > 0) {
           setMcpEndpoints([...mcpEndpoints, ...newEndpoints]);
+          
+          // Test connections for new endpoints
+          const connectionResults: Record<string, boolean> = {...activeConnections};
+          
+          for (const endpoint of newEndpoints) {
+            try {
+              const result = await testMCPConnection(endpoint);
+              connectionResults[endpoint] = result.success;
+            } catch {
+              connectionResults[endpoint] = false;
+            }
+          }
+          
+          setActiveConnections(connectionResults);
+          
           // Set feedback message
           setConnectionStatus({
             endpoint: 'discovery',
@@ -246,15 +305,40 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 <p className="text-sm text-muted-foreground text-center py-2">No endpoints configured</p>
               ) : (
                 mcpEndpoints.map((endpoint) => (
-                  <div key={endpoint} className="flex items-center justify-between bg-muted/30 rounded p-1 pl-2">
-                    <span className="text-sm truncate flex-1">{endpoint}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveEndpoint(endpoint)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                  <div key={endpoint} 
+                    className={`flex items-center justify-between rounded p-1 pl-2 ${activeConnections[endpoint] 
+                      ? 'bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50' 
+                      : 'bg-muted/30'}`}
+                  >
+                    <div className="flex items-center gap-2 truncate flex-1">
+                      <Server className={`h-4 w-4 ${activeConnections[endpoint] ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+                      <span className="text-sm truncate">{endpoint}</span>
+                    </div>
+                    <div className="flex items-center">
+                      {activeConnections[endpoint] && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-400 mr-1">
+                          Connected
+                        </span>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => window.open(`${endpoint}`)}
+                        title="Open in browser"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleRemoveEndpoint(endpoint)}
+                        title="Remove endpoint"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
