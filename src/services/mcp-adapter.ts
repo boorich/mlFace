@@ -5,11 +5,12 @@
  */
 
 // Import the Client class from the client subpath
-import { Client } from '@modelcontextprotocol/sdk/dist/esm/client/index.js';
+// Note: Using relative path to dist to avoid Vite resolution issues
+import { Client } from '../../../node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js';
 
 // Re-export as MCPClient to keep the same interface
 export { Client as MCPClient };
 
 // Export any other types or functions we might need
-import { type CompleteParams } from '@modelcontextprotocol/sdk/dist/esm/types.js';
+import { type CompleteParams } from '../../../node_modules/@modelcontextprotocol/sdk/dist/esm/types.js';
 export type { CompleteParams };
