@@ -79,7 +79,7 @@ export function ChatList() {
                 ) : (
                   <button
                     className={cn(
-                      "flex items-center gap-2 w-full px-2 py-1 rounded hover:bg-muted text-left",
+                      "flex items-center gap-2 w-full px-2 py-1 rounded hover:bg-muted text-left group",
                       activeChat === chat.id && "bg-muted"
                     )}
                     onClick={() => setActiveChat(chat.id)}
@@ -87,11 +87,11 @@ export function ChatList() {
                     <MessageSquare className="h-4 w-4 shrink-0" />
                     <span className="truncate flex-1">{chat.title}</span>
                     
-                    <div className="flex opacity-0 group-hover:opacity-100 ml-2">
+                    <div className="flex ml-2">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation();
                           startEditingChat(chat.id, chat.title);
