@@ -20,22 +20,48 @@ function createHttpTransport(endpoint: string) {
     // Implements the Transport interface from MCP SDK
     async send(data: string): Promise<string> {
       try {
-        const response = await fetch(`${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: data,
-        });
+        // Try a few different endpoint paths
+        const endpoints = [
+          `${endpoint}`,
+          `${endpoint}/v1/messages`,
+          `${endpoint}/chat/completions`,
+          `${endpoint}/messages`
+        ];
+        
+        let lastError: Error | null = null;
+        
+        // Try each endpoint in order
+        for (const url of endpoints) {
+          try {
+            console.log(`Trying to send to: ${url}`);
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              body: data,
+            });
 
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => '');
-          throw new Error(`HTTP error ${response.status}: ${errorText || response.statusText}`);
+            if (!response.ok) {
+              const errorText = await response.text().catch(() => '');
+              console.warn(`Error response from ${url}:`, response.status, errorText);
+              continue; // Try next endpoint
+            }
+
+            const responseText = await response.text();
+            console.log(`Successful response from ${url}:`, responseText.substring(0, 100)); // First 100 chars
+            return responseText;
+          } catch (err) {
+            console.warn(`Failed to send to ${url}:`, err);
+            lastError = err instanceof Error ? err : new Error(String(err));
+          }
         }
-
-        return await response.text();
+        
+        // If we get here, all endpoints failed
+        throw lastError || new Error('All endpoints failed');
       } catch (error) {
-        console.error('Transport error:', error);
+        console.error('Transport send error:', error);
         throw error;
       }
     },
@@ -104,36 +130,62 @@ export async function testMCPConnection(endpoint: string): Promise<{ success: bo
     // Validate URL format
     try {
       new URL(endpoint);
-    } catch {
+    } catch (err) {
       return { success: false, message: 'Invalid URL format' };
     }
     
+    console.log('Testing connection to MCP server:', endpoint);
+    
     // Try to connect with a timeout
     const timeoutPromise = new Promise<{ success: boolean; message: string }>((_, reject) => {
-      setTimeout(() => reject(new Error('Connection timed out')), 5000);
+      setTimeout(() => reject(new Error('Connection timed out')), 10000); // Increased timeout
     });
     
     const connectionPromise = (async () => {
       try {
+        // First, try a basic fetch to check if the server is responding
+        console.log('Attempting basic fetch to:', endpoint);
+        try {
+          const response = await fetch(endpoint, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(5000),
+          });
+          
+          console.log('Server response status:', response.status);
+          const responseText = await response.text();
+          console.log('Server response body:', responseText.substring(0, 200)); // Log first 200 chars
+        } catch (fetchError) {
+          console.warn('Basic fetch failed:', fetchError);
+          // Continue with client creation even if fetch fails
+        }
+        
         // Create client
+        console.log('Creating MCP client...');
         const client = new Client(
           { name: 'mlFace-test', version: '0.1.0' },
           { capabilities: { prompts: true } }
         );
         
         // Connect with transport
-        await client.connect(createHttpTransport(endpoint));
+        const transport = createHttpTransport(endpoint);
+        console.log('Connecting to transport...');
+        await client.connect(transport);
+        console.log('Connected successfully!');
         
         // Get capabilities
         const capabilities = client.getServerCapabilities();
+        console.log('Server capabilities:', capabilities);
         const hasPrompts = capabilities?.prompts || false;
         
         // Try to get model list
         let modelCount = 0;
         try {
           if (hasPrompts) {
+            console.log('Listing prompts...');
             const result = await client.listPrompts({});
             modelCount = result.prompts.length;
+            console.log('Found prompts:', result.prompts);
           }
         } catch (e) {
           console.warn('Failed to list prompts:', e);
@@ -147,9 +199,24 @@ export async function testMCPConnection(endpoint: string): Promise<{ success: bo
           message: `Connection successful. Found ${modelCount} models.`,
         };
       } catch (error) {
+        console.error('Connection test error:', error);
+        let errorMessage = 'Unknown error';
+        
+        if (error instanceof Error) {
+          errorMessage = error.message;
+          console.error('Error stack:', error.stack);
+          
+          // Check for specific error types
+          if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+            errorMessage = 'Network error - Make sure the MCP server is running and accessible';
+          } else if (error.message.includes('JSON')) {
+            errorMessage = 'Invalid response from server - Not a valid MCP server';
+          }
+        }
+        
         return {
           success: false,
-          message: `Connection failed: ${error instanceof Error ? error.message : String(error)}`,
+          message: `Connection failed: ${errorMessage}`,
         };
       }
     })();
@@ -181,31 +248,52 @@ export async function discoverMCPServers(): Promise<string[]> {
     'http://localhost:8000',
     'http://localhost:8080',
     'http://localhost:5000',
+    'http://localhost:3000'
   ];
   
+  console.log('Starting MCP server discovery...');
   const foundEndpoints: string[] = [];
   
   // Test each endpoint in parallel
   const results = await Promise.allSettled(
     potentialEndpoints.map(async (endpoint) => {
+      console.log(`Checking endpoint: ${endpoint}`);
       try {
-        // Try to ping the server with a short timeout
-        const pingResponse = await fetch(`${endpoint}`, {
-          signal: AbortSignal.timeout(1000), // 1 second timeout
-        });
+        // Try several paths to check for MCP server
+        const paths = ['', '/ping', '/v1', '/models', '/v1/models'];
         
-        if (pingResponse.ok) {
-          return endpoint;
+        for (const path of paths) {
+          const url = `${endpoint}${path}`;
+          console.log(`Trying: ${url}`);
+          
+          try {
+            const response = await fetch(url, {
+              signal: AbortSignal.timeout(1000), // 1 second timeout
+              headers: { Accept: 'application/json, text/plain, */*' }
+            });
+            
+            if (response.ok) {
+              console.log(`Found responsive endpoint at: ${url}`);
+              return endpoint;
+            }
+          } catch (err) {
+            // Ignore individual path errors
+          }
         }
         
-        // Fallback to testing with our connection method
+        // Last resort: try a more thorough connection test
+        console.log(`Trying connection test to: ${endpoint}`);
         const testResult = await testMCPConnection(endpoint);
         if (testResult.success) {
+          console.log(`Connection test succeeded for: ${endpoint}`);
           return endpoint;
         }
-      } catch {
+      } catch (err) {
+        console.warn(`Error checking ${endpoint}:`, err);
         // Ignore connection errors
       }
+      
+      console.log(`No MCP server found at: ${endpoint}`);
       return null;
     })
   );
