@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import path from "path";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -7,6 +8,14 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  
+  resolve: {
+    alias: {
+      // Alias for specific SDK paths to bypass subpath exports issues
+      '@modelcontextprotocol/sdk/client/index.js': path.resolve(__dirname, 'node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js'),
+      '@modelcontextprotocol/sdk/types.js': path.resolve(__dirname, 'node_modules/@modelcontextprotocol/sdk/dist/esm/types.js'),
+    }
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

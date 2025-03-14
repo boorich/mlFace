@@ -103,7 +103,7 @@ import {
   discoverMCPServers, 
   fetchMCPModels, 
   sendMCPMessage 
-} from './mcp';
+} from './mcp-client';
 
 // Helper function to check if a URL is valid
 export function isValidUrl(url: string): boolean {
