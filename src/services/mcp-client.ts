@@ -136,104 +136,62 @@ export async function testMCPConnection(endpoint: string): Promise<{ success: bo
     
     console.log('Testing connection to MCP server:', endpoint);
     
-    // Try to connect with a timeout
-    const timeoutPromise = new Promise<{ success: boolean; message: string }>((_, reject) => {
-      setTimeout(() => reject(new Error('Connection timed out')), 10000); // Increased timeout
-    });
-    
-    const connectionPromise = (async () => {
-      try {
-        // First, try a basic fetch to check if the server is responding
-        console.log('Attempting basic fetch to:', endpoint);
-        try {
-          const response = await fetch(endpoint, {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-            signal: AbortSignal.timeout(5000),
-          });
-          
-          console.log('Server response status:', response.status);
-          const responseText = await response.text();
-          console.log('Server response body:', responseText.substring(0, 200)); // Log first 200 chars
-        } catch (fetchError) {
-          console.warn('Basic fetch failed:', fetchError);
-          // Continue with client creation even if fetch fails
-        }
-        
-        // Create client
-        console.log('Creating MCP client...');
-        const client = new Client(
-          { name: 'mlFace-test', version: '0.1.0' },
-          { capabilities: { prompts: true } }
-        );
-        
-        // Connect with transport
-        const transport = createHttpTransport(endpoint);
-        console.log('Connecting to transport...');
-        await client.connect(transport);
-        console.log('Connected successfully!');
-        
-        // Get capabilities
-        const capabilities = client.getServerCapabilities();
-        console.log('Server capabilities:', capabilities);
-        const hasPrompts = capabilities?.prompts || false;
-        
-        // Try to get model list
-        let modelCount = 0;
-        try {
-          if (hasPrompts) {
-            console.log('Listing prompts...');
-            const result = await client.listPrompts({});
-            modelCount = result.prompts.length;
-            console.log('Found prompts:', result.prompts);
-          }
-        } catch (e) {
-          console.warn('Failed to list prompts:', e);
-        }
-        
-        // Close connection
-        await client.close();
-        
-        return {
-          success: true,
-          message: `Connection successful. Found ${modelCount} models.`,
-        };
-      } catch (error) {
-        console.error('Connection test error:', error);
-        let errorMessage = 'Unknown error';
-        
-        if (error instanceof Error) {
-          errorMessage = error.message;
-          console.error('Error stack:', error.stack);
-          
-          // Check for specific error types
-          if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            errorMessage = 'Network error - Make sure the MCP server is running and accessible';
-          } else if (error.message.includes('JSON')) {
-            errorMessage = 'Invalid response from server - Not a valid MCP server';
-          }
-        }
-        
-        return {
-          success: false,
-          message: `Connection failed: ${errorMessage}`,
+    // First, try a direct test to the bridge
+    try {
+      console.log('Trying direct bridge test...');
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(3000),
+      });
+      
+      if (response.ok) {
+        console.log('Bridge direct test successful!');
+        const data = await response.json();
+        return { 
+          success: true, 
+          message: `Connection successful. ${data.message || ''}` 
         };
       }
-    })();
+    } catch (err) {
+      console.warn('Bridge direct test failed:', err);
+      // Continue with other methods if this fails
+    }
     
-    // Race between connection and timeout
-    return await Promise.race([connectionPromise, timeoutPromise]);
+    // Next, try the standard MCP test through the bridge
+    console.log('Trying MCP protocol connection...');
+    const client = new Client(
+      { name: 'mlFace-test', version: '0.1.0' },
+      { capabilities: { prompts: true } }
+    );
     
+    const transport = createHttpTransport(endpoint);
+    await client.connect(transport);
+    console.log('MCP SDK client connected successfully');
+    
+    // Get server info
+    const serverInfo = client.getServerVersion();
+    const serverCapabilities = client.getServerCapabilities();
+    
+    // Close the connection
+    await client.close();
+    
+    return {
+      success: true,
+      message: `Connection successful. Server: ${serverInfo?.name || 'Unknown'} ${serverInfo?.version || ''}`
+    };
   } catch (error) {
-    console.error('Error testing MCP connection:', error);
+    console.error('Connection test error:', error);
+    let errorMessage = 'Unknown error';
     
-    if (error instanceof Error && error.message === 'Connection timed out') {
-      return { success: false, message: 'Connection timed out' };
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      console.error('Error stack:', error.stack);
     }
     
     return {
       success: false,
-      message: `Connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      message: `Connection failed: ${errorMessage}`,
     };
   }
 }
