@@ -9,9 +9,10 @@ import { fetchOpenRouterModels, fetchMCPModels } from "../../services/api";
 interface ModelSelectorProps {
   onSelect: (modelId: string) => void;
   selectedModelId?: string;
+  disabled?: boolean;
 }
 
-export function ModelSelector({ onSelect, selectedModelId }: ModelSelectorProps) {
+export function ModelSelector({ onSelect, selectedModelId, disabled = false }: ModelSelectorProps) {
   const { models, addModels, settings } = useStore();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -67,7 +68,7 @@ export function ModelSelector({ onSelect, selectedModelId }: ModelSelectorProps)
         variant="outline"
         className="w-full justify-between"
         onClick={() => setIsOpen(!isOpen)}
-        disabled={isLoading || models.length === 0}
+        disabled={disabled || isLoading || models.length === 0}
       >
         <div className="flex items-center gap-2 truncate">
           {selectedModel ? (

@@ -20,12 +20,14 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const [mcpEndpoints, setMcpEndpoints] = useState<string[]>(settings.mcpEndpoints || []);
   const [newEndpoint, setNewEndpoint] = useState("");
   const [selectedDefaultModel, setSelectedDefaultModel] = useState(settings.defaultModelId || "");
+  const [autoSelectModel, setAutoSelectModel] = useState(settings.autoSelectModel || false);
 
   // Update local state when settings change
   useEffect(() => {
     setApiKey(settings.openrouterApiKey || "");
     setMcpEndpoints(settings.mcpEndpoints || []);
     setSelectedDefaultModel(settings.defaultModelId || "");
+    setAutoSelectModel(settings.autoSelectModel || false);
   }, [settings]);
 
   // If the dialog is not open, don't render anything
@@ -36,6 +38,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
       openrouterApiKey: apiKey,
       mcpEndpoints,
       defaultModelId: selectedDefaultModel,
+      autoSelectModel,
     });
     onClose();
   };
@@ -149,13 +152,35 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
             </div>
           </div>
 
-          {/* Default Model */}
+          {/* Default Model and Auto Select */}
           <div>
-            <h3 className="text-sm font-medium mb-2">Default Model</h3>
-            <ModelSelector
-              selectedModelId={selectedDefaultModel}
-              onSelect={setSelectedDefaultModel}
-            />
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Default Model</h3>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Auto-select</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={autoSelectModel}
+                    onChange={(e) => setAutoSelectModel(e.target.checked)}
+                  />
+                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            </div>
+            <div className={autoSelectModel ? "opacity-50 pointer-events-none" : ""}>
+              <ModelSelector
+                selectedModelId={selectedDefaultModel}
+                onSelect={setSelectedDefaultModel}
+                disabled={autoSelectModel}
+              />
+            </div>
+            {autoSelectModel && (
+              <p className="text-xs text-muted-foreground mt-2">
+                When enabled, the app will automatically select the most appropriate model based on your message content.
+              </p>
+            )}
           </div>
         </div>
 

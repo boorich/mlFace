@@ -37,6 +37,7 @@ export interface Settings {
   openrouterApiKey: string;
   mcpEndpoints: string[];
   defaultModelId: string;
+  autoSelectModel: boolean;
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';

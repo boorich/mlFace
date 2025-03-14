@@ -3,6 +3,7 @@ import { useStore } from "../../store/useStore";
 import { ChatHistory } from "./chat-history";
 import { ChatInput } from "./chat-input";
 import { sendMessage } from "../../services/api";
+import { selectModelForPrompt } from "../../lib/model-selection";
 
 export function ChatWindow() {
   const { chats, activeChat, addMessage, models, settings, setIsLoading } = useStore();
@@ -39,9 +40,27 @@ export function ChatWindow() {
     setIsLoading(true);
 
     try {
+      // If auto-select is enabled, determine the best model for this message
+      let modelToUse = currentModel;
+      
+      if (settings.autoSelectModel) {
+        const autoSelectedModel = selectModelForPrompt(models, content);
+        if (autoSelectedModel) {
+          modelToUse = autoSelectedModel;
+          
+          // Add a system message indicating the model change if it's different
+          if (modelToUse.id !== currentChat.modelId) {
+            addMessage(currentChat.id, {
+              content: `Auto-selected model: ${modelToUse.name} based on your message content.`,
+              role: "system",
+            });
+          }
+        }
+      }
+
       // Send message to API and get response
       const response = await sendMessage(
-        currentModel,
+        modelToUse,
         [...currentChat.messages, { id: "temp", content, role: "user", timestamp: new Date().toISOString() }],
         settings.openrouterApiKey
       );
@@ -72,6 +91,7 @@ export function ChatWindow() {
         <h2 className="text-lg font-medium">{currentChat.title}</h2>
         <p className="text-sm text-muted-foreground">
           Model: {currentModel.name}
+          {settings.autoSelectModel && " (Auto-select enabled)"}
         </p>
       </div>
 

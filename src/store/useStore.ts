@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS: Settings = {
   openrouterApiKey: '',
   mcpEndpoints: [],
   defaultModelId: '',
+  autoSelectModel: false,
 };
 
 export const useStore = create<State & Actions>()(
