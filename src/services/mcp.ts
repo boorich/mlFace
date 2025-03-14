@@ -1,4 +1,4 @@
-import { MCPClient } from '@modelcontextprotocol/sdk';
+import { MCPClient } from './mcp-adapter';
 import { Message, MCPModel } from '../types';
 
 // Create a cache for MCP clients to avoid creating new connections for each request
@@ -12,9 +12,15 @@ export function getMCPClient(endpoint: string): MCPClient {
     return mcpClientCache.get(endpoint)!;
   }
   
+  // Create a new client with proper configuration
   const client = new MCPClient({
-    uri: endpoint,
-    apiKey: '', // No API key needed for local MCP servers
+    name: 'mlFace',
+    version: '0.1.0',
+  }, {
+    // Register capabilities
+    capabilities: {
+      prompts: true,
+    }
   });
   
   mcpClientCache.set(endpoint, client);
@@ -26,20 +32,81 @@ export function getMCPClient(endpoint: string): MCPClient {
  */
 export async function testMCPConnection(endpoint: string): Promise<{ success: boolean; message: string }> {
   try {
-    const client = getMCPClient(endpoint);
+    // Validate URL format
+    try {
+      new URL(endpoint);
+    } catch {
+      return { success: false, message: 'Invalid URL format' };
+    }
     
-    // Attempt to fetch models to verify the connection
-    const models = await client.getModels();
+    // Use a timeout for the test
+    const timeoutPromise = new Promise<{ success: boolean; message: string }>((_, reject) => {
+      setTimeout(() => reject(new Error('Connection timed out')), 5000);
+    });
     
-    return { 
-      success: true, 
-      message: `Connection successful. Found ${models.length} models.` 
-    };
+    // Try to connect and ping the server
+    const connectionPromise = (async () => {
+      try {
+        // We create a new client for testing to avoid caching issues
+        const client = new MCPClient({
+          uri: endpoint,
+          apiKey: '',
+        });
+        
+        // Try to establish a connection
+        await client.connect({
+          async send(data) {
+            const response = await fetch(`${endpoint}/v1/messages`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: data,
+            });
+            return await response.text();
+          },
+          close() {
+            // Nothing to do for HTTP transport
+          },
+        });
+        
+        // Try to get capability information
+        const capabilities = client.getServerCapabilities();
+        const hasPrompts = capabilities?.prompts || false;
+        
+        // Try to list models if prompts capability is available
+        let modelCount = 0;
+        if (hasPrompts) {
+          try {
+            const promptsResult = await client.listPrompts({});
+            modelCount = promptsResult.prompts.length;
+          } catch (e) {
+            console.warn('Failed to list prompts:', e);
+          }
+        }
+        
+        // If we got here, connection was successful
+        return { 
+          success: true, 
+          message: `Connection successful. Found ${modelCount} models.` 
+        };
+      } catch (error) {
+        return { 
+          success: false, 
+          message: `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        };
+      }
+    })();
+    
+    // Race between the connection attempt and the timeout
+    return await Promise.race([connectionPromise, timeoutPromise]);
   } catch (error) {
     console.error('Error testing MCP connection:', error);
     return { 
       success: false, 
-      message: `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      message: error instanceof Error && error.message === 'Connection timed out'
+        ? 'Connection timed out'
+        : `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
     };
   }
 }
@@ -63,27 +130,25 @@ export async function discoverMCPServers(): Promise<string[]> {
   const results = await Promise.allSettled(
     potentialEndpoints.map(async (endpoint) => {
       try {
-        const client = new MCPClient({
-          uri: endpoint,
-          apiKey: '',
+        // Try to ping the server with a short timeout
+        const pingResponse = await fetch(`${endpoint}/v1/ping`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(1000), // 1 second timeout
         });
         
-        // Set a timeout of 1 second for discovery
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout')), 1000);
-        });
+        if (pingResponse.ok) {
+          return endpoint;
+        }
         
-        // Race between the model fetch and the timeout
-        await Promise.race([
-          client.getModels(),
-          timeoutPromise
-        ]);
-        
-        return endpoint;
+        // As fallback, try regular connection test
+        const testResult = await testMCPConnection(endpoint);
+        if (testResult.success) {
+          return endpoint;
+        }
       } catch {
         // Ignore connection errors
-        return null;
       }
+      return null;
     })
   );
   
@@ -103,15 +168,37 @@ export async function discoverMCPServers(): Promise<string[]> {
 export async function fetchMCPModels(endpoint: string): Promise<MCPModel[]> {
   try {
     const client = getMCPClient(endpoint);
-    const models = await client.getModels();
     
-    return models.map(model => ({
-      id: `mcp-${endpoint}-${model.id}`,
-      name: model.name || model.id,
+    // Connect to the server if not already connected
+    if (!client.getServerCapabilities()) {
+      await client.connect({
+        async send(data) {
+          const response = await fetch(`${endpoint}/v1/messages`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: data,
+          });
+          return await response.text();
+        },
+        close() {
+          // Nothing to do for HTTP transport
+        },
+      });
+    }
+    
+    // List prompts (models)
+    const promptsResult = await client.listPrompts({});
+    
+    // Map prompts to our model format
+    return promptsResult.prompts.map(prompt => ({
+      id: `mcp-${endpoint}-${prompt.id}`,
+      name: prompt.name || prompt.id,
       provider: 'mcp' as const,
       endpoint,
-      contextLength: model.contextLength,
-      capabilities: model.capabilities || [],
+      contextLength: 4096, // Default value if not specified
+      capabilities: [],
     }));
   } catch (error) {
     console.error('Error fetching MCP models:', error);
@@ -133,6 +220,25 @@ export async function sendMCPMessage(
     // Extract the actual model ID if provided (remove the prefix and endpoint)
     const actualModelId = modelId ? modelId.replace(`mcp-${endpoint}-`, '') : undefined;
     
+    // Connect to the server if not already connected
+    if (!client.getServerCapabilities()) {
+      await client.connect({
+        async send(data) {
+          const response = await fetch(`${endpoint}/v1/messages`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: data,
+          });
+          return await response.text();
+        },
+        close() {
+          // Nothing to do for HTTP transport
+        },
+      });
+    }
+    
     // Convert messages to the format expected by the MCP SDK
     const mcpMessages = messages.map(msg => ({
       role: msg.role,
@@ -140,12 +246,16 @@ export async function sendMCPMessage(
     }));
     
     // Make the chat completion request
-    const response = await client.createChatCompletion({
+    const response = await client.complete({
       messages: mcpMessages,
       model: actualModelId,
     });
     
     // Return the content of the response
+    if (!response || !response.message) {
+      throw new Error('Invalid response from MCP server: missing message');
+    }
+    
     return response.message.content;
   } catch (error) {
     console.error('Error sending message to MCP server:', error);
