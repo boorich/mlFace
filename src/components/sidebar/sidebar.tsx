@@ -4,6 +4,7 @@ import { ChatList } from "./chat-list";
 import { Button } from "../ui/button";
 import { useTheme } from "../theme/theme-provider";
 import { Link } from "react-router-dom";
+import { Brand } from "../brand";
 
 interface SidebarProps {
   onSettingsClick: () => void;
@@ -27,10 +28,7 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
   return (
     <div className="h-full border-r flex flex-col bg-background">
       <div className="p-4 border-b">
-        <h1 className="text-xl font-bold">mlFace</h1>
-        <p className="text-sm text-muted-foreground">
-          Machine Learning Facade
-        </p>
+        <Brand size="md" />
       </div>
       
       <div className="flex-1 overflow-y-auto">
