@@ -9,12 +9,12 @@
  *   node mcp-bridge-advanced.js --container CONTAINER_NAME --port PORT
  */
 
-const http = require('http');
-const express = require('express');
-const { spawn } = require('child_process');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const { randomUUID } = require('crypto');
+import http from 'http';
+import express from 'express';
+import { spawn } from 'child_process';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import { randomUUID } from 'crypto';
 
 // Parse command line arguments
 const args = process.argv.slice(2);

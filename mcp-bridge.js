@@ -9,9 +9,9 @@
  *   node mcp-bridge.js --container CONTAINER_NAME --port PORT
  */
 
-const http = require('http');
-const { spawn } = require('child_process');
-const { parse } = require('url');
+import http from 'http';
+import { spawn } from 'child_process';
+import { parse } from 'url';
 
 // Parse command line arguments
 const args = process.argv.slice(2);

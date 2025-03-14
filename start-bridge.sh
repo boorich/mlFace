@@ -4,7 +4,7 @@
 # Default values
 CONTAINER=""
 PORT=11434
-ADVANCED=true
+MODE="minimal"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -17,13 +17,13 @@ while [[ $# -gt 0 ]]; do
       PORT="$2"
       shift 2
       ;;
-    --basic)
-      ADVANCED=false
-      shift
+    --mode)
+      MODE="$2"
+      shift 2
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 --container CONTAINER_NAME [--port PORT] [--basic]"
+      echo "Usage: $0 --container CONTAINER_NAME [--port PORT] [--mode minimal|basic|advanced]"
       exit 1
       ;;
   esac
@@ -32,7 +32,7 @@ done
 # Check for required arguments
 if [ -z "$CONTAINER" ]; then
   echo "Error: Container name is required"
-  echo "Usage: $0 --container CONTAINER_NAME [--port PORT] [--basic]"
+  echo "Usage: $0 --container CONTAINER_NAME [--port PORT] [--mode minimal|basic|advanced]"
   exit 1
 fi
 
@@ -44,17 +44,25 @@ if ! docker ps --format '{{.Names}}' | grep -q "^$CONTAINER$"; then
   exit 1
 fi
 
-# Install dependencies if needed
-if [ ! -d "node_modules" ]; then
-  echo "Installing dependencies..."
-  npm install --silent express cors body-parser
-fi
+# Make the bridge script executable
+chmod +x mcp-bridge-minimal.js mcp-bridge.js mcp-bridge-advanced.js
 
 # Start the bridge
-if [ "$ADVANCED" = true ]; then
-  echo "Starting advanced MCP bridge for container '$CONTAINER' on port $PORT..."
-  node mcp-bridge-advanced.js --container "$CONTAINER" --port "$PORT"
-else
-  echo "Starting basic MCP bridge for container '$CONTAINER' on port $PORT..."
-  node mcp-bridge.js --container "$CONTAINER" --port "$PORT"
-fi
+case "$MODE" in
+  "minimal")
+    echo "Starting minimal MCP bridge for container '$CONTAINER' on port $PORT..."
+    node mcp-bridge-minimal.js --container "$CONTAINER" --port "$PORT"
+    ;;
+  "basic")
+    echo "Starting basic MCP bridge for container '$CONTAINER' on port $PORT..."
+    node mcp-bridge.js --container "$CONTAINER" --port "$PORT"
+    ;;
+  "advanced")
+    echo "Starting advanced MCP bridge for container '$CONTAINER' on port $PORT..."
+    node mcp-bridge-advanced.js --container "$CONTAINER" --port "$PORT"
+    ;;
+  *)
+    echo "Error: Invalid mode '$MODE'. Must be one of: minimal, basic, advanced"
+    exit 1
+    ;;
+esac

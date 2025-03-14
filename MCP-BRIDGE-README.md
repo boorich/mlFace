@@ -1,6 +1,6 @@
 # MCP Bridge for mlFace
 
-This directory contains two bridge implementations for connecting the mlFace application to MCP servers running in Docker containers that use stdio communication.
+This directory contains three bridge implementations for connecting the mlFace application to MCP servers running in Docker containers that use stdio communication.
 
 ## Background
 
@@ -13,28 +13,27 @@ When running MCP servers in Docker containers (especially the filesystem server)
 
 ## Quick Start
 
-### Basic Bridge
+### Minimal Bridge (Recommended)
 
-The basic bridge (`mcp-bridge.js`) is simpler but less robust. Use it for testing:
+The minimal bridge (`mcp-bridge-minimal.js`) has no external dependencies and is the easiest to use:
 
 ```bash
-# Install dependencies
-npm install express cors body-parser
-
 # Run the bridge (replace CONTAINER_NAME with your Docker container's name)
-node mcp-bridge.js --container CONTAINER_NAME --port 11434
+./start-bridge.sh --container CONTAINER_NAME
 ```
 
-### Advanced Bridge
+This will use the minimal bridge by default.
 
-The advanced bridge (`mcp-bridge-advanced.js`) has better protocol handling:
+### Alternative Bridge Implementations
+
+You can also choose other bridge implementations:
 
 ```bash
-# Install dependencies
-npm install express cors body-parser
+# Use the basic bridge
+./start-bridge.sh --container CONTAINER_NAME --mode basic
 
-# Run the bridge
-node mcp-bridge-advanced.js --container CONTAINER_NAME --port 11434
+# Use the advanced bridge
+./start-bridge.sh --container CONTAINER_NAME --mode advanced
 ```
 
 ### In Your Application
