@@ -1,4 +1,4 @@
-import { MCPClient } from './mcp-adapter';
+import { MCPClient } from '@modelcontextprotocol/sdk';
 import { Message, MCPModel } from '../types';
 
 // Create a cache for MCP clients to avoid creating new connections for each request
