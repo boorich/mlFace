@@ -13,15 +13,14 @@ import type { Message, MCPModel } from '../types';
 /**
  * Creates an HTTP transport for the MCP client
  * 
- * We're implementing this as a function that returns a simple object with 
- * send/close methods to avoid SSE dependency which can be problematic in browser
+ * This implements the Transport interface from the MCP SDK
  */
 function createHttpTransport(endpoint: string) {
   return {
     // Implements the Transport interface from MCP SDK
     async send(data: string): Promise<string> {
       try {
-        const response = await fetch(`${endpoint}/v1/messages`, {
+        const response = await fetch(`${endpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -41,8 +40,17 @@ function createHttpTransport(endpoint: string) {
       }
     },
     
+    // Required by the MCP Client
+    async start() {
+      console.log('Starting HTTP transport to:', endpoint);
+      // For HTTP transport, we don't need to do anything special to start
+      // This just confirms the transport is ready to use
+      return Promise.resolve();
+    },
+    
     close() {
       // Nothing to clean up for fetch-based transport
+      console.log('Closing HTTP transport to:', endpoint);
     },
     
     // These will be set by the Client
@@ -182,7 +190,7 @@ export async function discoverMCPServers(): Promise<string[]> {
     potentialEndpoints.map(async (endpoint) => {
       try {
         // Try to ping the server with a short timeout
-        const pingResponse = await fetch(`${endpoint}/ping`, {
+        const pingResponse = await fetch(`${endpoint}`, {
           signal: AbortSignal.timeout(1000), // 1 second timeout
         });
         
