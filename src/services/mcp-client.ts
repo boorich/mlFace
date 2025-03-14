@@ -1,197 +1,47 @@
 /**
  * MCP Client implementation for mlFace
  * 
- * This file provides a lightweight wrapper around the MCP SDK's Client class
- * to handle connecting to MCP servers and making requests.
+ * This file provides functions to connect to MCP servers.
  */
 
-// Import from the SDK's subpaths as specified in its exports field
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { CompleteParams, CompleteResult } from '@modelcontextprotocol/sdk/types.js';
 import type { Message, MCPModel } from '../types';
-
-/**
- * Creates an HTTP transport for the MCP client
- * 
- * This implements the Transport interface from the MCP SDK
- */
-function createHttpTransport(endpoint: string) {
-  return {
-    // Implements the Transport interface from MCP SDK
-    async send(data: string): Promise<string> {
-      try {
-        // Try a few different endpoint paths
-        const endpoints = [
-          `${endpoint}`,
-          `${endpoint}/v1/messages`,
-          `${endpoint}/chat/completions`,
-          `${endpoint}/messages`
-        ];
-        
-        let lastError: Error | null = null;
-        
-        // Try each endpoint in order
-        for (const url of endpoints) {
-          try {
-            console.log(`Trying to send to: ${url}`);
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: data,
-            });
-
-            if (!response.ok) {
-              const errorText = await response.text().catch(() => '');
-              console.warn(`Error response from ${url}:`, response.status, errorText);
-              continue; // Try next endpoint
-            }
-
-            const responseText = await response.text();
-            console.log(`Successful response from ${url}:`, responseText.substring(0, 100)); // First 100 chars
-            return responseText;
-          } catch (err) {
-            console.warn(`Failed to send to ${url}:`, err);
-            lastError = err instanceof Error ? err : new Error(String(err));
-          }
-        }
-        
-        // If we get here, all endpoints failed
-        throw lastError || new Error('All endpoints failed');
-      } catch (error) {
-        console.error('Transport send error:', error);
-        throw error;
-      }
-    },
-    
-    // Required by the MCP Client
-    async start() {
-      console.log('Starting HTTP transport to:', endpoint);
-      // For HTTP transport, we don't need to do anything special to start
-      // This just confirms the transport is ready to use
-      return Promise.resolve();
-    },
-    
-    close() {
-      // Nothing to clean up for fetch-based transport
-      console.log('Closing HTTP transport to:', endpoint);
-    },
-    
-    // These will be set by the Client
-    onmessage: undefined,
-    onclose: undefined,
-    onerror: undefined,
-  };
-}
-
-// Cache MCP clients to avoid creating new ones for each request
-const clientCache = new Map<string, Client>();
-
-/**
- * Get or create an MCP client for the given endpoint
- */
-async function getMCPClient(endpoint: string): Promise<Client> {
-  // Return cached client if available
-  if (clientCache.has(endpoint)) {
-    return clientCache.get(endpoint)!;
-  }
-  
-  // Create a new client
-  const client = new Client(
-    // Client info
-    {
-      name: 'mlFace',
-      version: '0.1.0',
-    },
-    // Client options
-    {
-      capabilities: {
-        prompts: true,
-      },
-    }
-  );
-  
-  // Create and connect transport
-  const transport = createHttpTransport(endpoint);
-  await client.connect(transport);
-  
-  // Cache and return client
-  clientCache.set(endpoint, client);
-  return client;
-}
 
 /**
  * Test connection to an MCP server
  */
 export async function testMCPConnection(endpoint: string): Promise<{ success: boolean; message: string }> {
   try {
-    // Validate URL format
-    try {
-      new URL(endpoint);
-    } catch (err) {
-      return { success: false, message: 'Invalid URL format' };
+    // Simple endpoint validation
+    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      return { 
+        success: false, 
+        message: 'Invalid URL format - must start with http:// or https://' 
+      };
     }
+
+    // Try a basic ping
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
     
-    console.log('Testing connection to MCP server:', endpoint);
-    
-    // First, try a direct test to the bridge
-    try {
-      console.log('Trying direct bridge test...');
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(3000),
-      });
-      
-      if (response.ok) {
-        console.log('Bridge direct test successful!');
-        const data = await response.json();
-        return { 
-          success: true, 
-          message: `Connection successful. ${data.message || ''}` 
-        };
-      }
-    } catch (err) {
-      console.warn('Bridge direct test failed:', err);
-      // Continue with other methods if this fails
-    }
-    
-    // Next, try the standard MCP test through the bridge
-    console.log('Trying MCP protocol connection...');
-    const client = new Client(
-      { name: 'mlFace-test', version: '0.1.0' },
-      { capabilities: { prompts: true } }
-    );
-    
-    const transport = createHttpTransport(endpoint);
-    await client.connect(transport);
-    console.log('MCP SDK client connected successfully');
-    
-    // Get server info
-    const serverInfo = client.getServerVersion();
-    const serverCapabilities = client.getServerCapabilities();
-    
-    // Close the connection
-    await client.close();
-    
-    return {
-      success: true,
-      message: `Connection successful. Server: ${serverInfo?.name || 'Unknown'} ${serverInfo?.version || ''}`
-    };
-  } catch (error) {
-    console.error('Connection test error:', error);
-    let errorMessage = 'Unknown error';
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      console.error('Error stack:', error.stack);
+    if (response.ok) {
+      return { 
+        success: true, 
+        message: 'Connection successful' 
+      };
     }
     
     return {
       success: false,
-      message: `Connection failed: ${errorMessage}`,
+      message: `Connection failed with status ${response.status}`
+    };
+  } catch (error) {
+    console.error('Error testing MCP connection:', error);
+    return {
+      success: false,
+      message: `Connection failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }
@@ -206,52 +56,24 @@ export async function discoverMCPServers(): Promise<string[]> {
     'http://localhost:8000',
     'http://localhost:8080',
     'http://localhost:5000',
-    'http://localhost:3000'
   ];
   
-  console.log('Starting MCP server discovery...');
   const foundEndpoints: string[] = [];
   
   // Test each endpoint in parallel
   const results = await Promise.allSettled(
     potentialEndpoints.map(async (endpoint) => {
-      console.log(`Checking endpoint: ${endpoint}`);
       try {
-        // Try several paths to check for MCP server
-        const paths = ['', '/ping', '/v1', '/models', '/v1/models'];
+        const response = await fetch(endpoint, {
+          signal: AbortSignal.timeout(1000), // 1 second timeout
+        });
         
-        for (const path of paths) {
-          const url = `${endpoint}${path}`;
-          console.log(`Trying: ${url}`);
-          
-          try {
-            const response = await fetch(url, {
-              signal: AbortSignal.timeout(1000), // 1 second timeout
-              headers: { Accept: 'application/json, text/plain, */*' }
-            });
-            
-            if (response.ok) {
-              console.log(`Found responsive endpoint at: ${url}`);
-              return endpoint;
-            }
-          } catch (err) {
-            // Ignore individual path errors
-          }
-        }
-        
-        // Last resort: try a more thorough connection test
-        console.log(`Trying connection test to: ${endpoint}`);
-        const testResult = await testMCPConnection(endpoint);
-        if (testResult.success) {
-          console.log(`Connection test succeeded for: ${endpoint}`);
+        if (response.ok) {
           return endpoint;
         }
-      } catch (err) {
-        console.warn(`Error checking ${endpoint}:`, err);
+      } catch {
         // Ignore connection errors
       }
-      
-      console.log(`No MCP server found at: ${endpoint}`);
       return null;
     })
   );
@@ -270,26 +92,15 @@ export async function discoverMCPServers(): Promise<string[]> {
  * Fetch models from an MCP server
  */
 export async function fetchMCPModels(endpoint: string): Promise<MCPModel[]> {
-  try {
-    // Get client
-    const client = await getMCPClient(endpoint);
-    
-    // List prompts (models)
-    const promptsResult = await client.listPrompts({});
-    
-    // Map prompts to our model format
-    return promptsResult.prompts.map(prompt => ({
-      id: `mcp-${endpoint}-${prompt.id || prompt.name}`,
-      name: prompt.name || prompt.id || 'Unknown Model',
-      provider: 'mcp' as const,
-      endpoint,
-      contextLength: 4096, // Default value if not specified
-      capabilities: [],
-    }));
-  } catch (error) {
-    console.error('Error fetching MCP models:', error);
-    throw error;
-  }
+  // For now, just return a dummy model for each endpoint
+  return [{
+    id: `mcp-${endpoint}-default`,
+    name: 'Default MCP Model',
+    provider: 'mcp' as const,
+    endpoint,
+    contextLength: 4096,
+    capabilities: [],
+  }];
 }
 
 /**
@@ -300,40 +111,30 @@ export async function sendMCPMessage(
   messages: Message[],
   modelId?: string
 ): Promise<string> {
+  // This is just a placeholder implementation
   try {
-    // Get client
-    const client = await getMCPClient(endpoint);
-    
-    // Extract the actual model ID if provided (remove the prefix and endpoint)
-    const actualModelId = modelId ? modelId.replace(`mcp-${endpoint}-`, '') : undefined;
-    
-    // Convert messages to the format expected by the MCP SDK
-    const mcpMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-    
-    // Create completion params
-    const params: CompleteParams = {
-      messages: mcpMessages,
-    };
-    
-    // Add model if specified
-    if (actualModelId) {
-      params.model = actualModelId;
+    // Simple HTTP-based MCP implementation
+    const response = await fetch(`${endpoint}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`MCP server error: ${response.statusText}`);
     }
-    
-    // Make completion request
-    const response = await client.complete(params);
-    
-    // Return the content of the response
-    if (!response || !response.message) {
-      throw new Error('Invalid response from MCP server: missing message');
-    }
-    
-    return response.message.content;
+
+    const data = await response.json();
+    return data.message?.content || 'No response from MCP server';
   } catch (error) {
-    console.error('Error sending message to MCP server:', error);
+    console.error('Error sending MCP message:', error);
     throw error;
   }
 }
