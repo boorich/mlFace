@@ -49,10 +49,65 @@ const server = http.createServer((req, res) => {
     return;
   }
   
-  // For GET requests like ping
-  if (req.method === 'GET' && req.url === '/ping') {
+  // Special handling for test connection endpoint
+  if (req.method === 'GET' && req.url === '/test') {
+    console.log('Received test connection request');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
+    res.end(JSON.stringify({ status: 'ok', message: 'MCP Bridge is running and connected to container' }));
+    return;
+  }
+  
+  // Handle direct test connection with a GET request to root
+  if (req.method === 'GET' && (req.url === '/' || req.url === '')) {
+    console.log('Received root connection test');
+    
+    try {
+      // Basic test of the docker connection
+      const docker = spawn('docker', ['exec', '-i', containerName, 'echo', 'test']);
+      let testOutput = '';
+      
+      docker.stdout.on('data', (data) => {
+        testOutput += data.toString();
+      });
+      
+      docker.on('close', (code) => {
+        if (code === 0) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            message: 'Connection successful',
+            container: containerName,
+            test_output: testOutput.trim()
+          }));
+        } else {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            message: `Docker container test failed with code ${code}`,
+            container: containerName
+          }));
+        }
+      });
+      
+      docker.on('error', (err) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          message: err.message,
+          container: containerName
+        }));
+      });
+      
+      // No need to write to stdin for echo command
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        message: error.message,
+        container: containerName
+      }));
+    }
+    
     return;
   }
   
@@ -70,7 +125,13 @@ const server = http.createServer((req, res) => {
   });
   
   req.on('end', () => {
-    console.log(`Received request: ${body.substring(0, 100)}...`);
+    // Improved logging to show full content
+    try {
+      const parsedRequest = JSON.parse(body);
+      console.log('Received request:', JSON.stringify(parsedRequest, null, 2));
+    } catch (e) {
+      console.log('Received non-JSON request body:', body);
+    }
     
     try {
       // Spawn docker exec process
@@ -79,13 +140,17 @@ const server = http.createServer((req, res) => {
       
       // Collect response data
       docker.stdout.on('data', data => {
-        responseData += data.toString();
-        console.log(`Received from container: ${data.toString().substring(0, 100)}...`);
+        const newData = data.toString();
+        responseData += newData;
+        console.log('Received raw data from container:', newData);
+        console.log('Current accumulated response:', responseData);
         
         // Try to parse as JSON when we have complete messages
-        if (responseData.trim().endsWith('}')) {
-          try {
-            JSON.parse(responseData);
+        try {
+          if (responseData.trim().endsWith('}')) {
+            // Try to parse it as JSON
+            const parsedResponse = JSON.parse(responseData);
+            console.log('Successfully parsed complete JSON response:', JSON.stringify(parsedResponse, null, 2));
             
             // Send the response
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -93,9 +158,10 @@ const server = http.createServer((req, res) => {
             
             // Close the process
             docker.kill();
-          } catch (e) {
-            // Not valid JSON yet, keep collecting
           }
+        } catch (e) {
+          // Not valid JSON yet, keep collecting
+          console.log('Not yet a complete JSON response:', e.message);
         }
       });
       
