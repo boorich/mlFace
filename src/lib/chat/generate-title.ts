@@ -89,13 +89,17 @@ function generateTopicBasedTitle(userMessage: string, assistantResponse: string)
   } else if (isExplanation) {
     return truncateWithEllipsis(`Explaining: ${subject}`, 50);
   } else if (isCreative) {
-    if (userMessage.toLowerCase().includes('story')) {
-      return truncateWithEllipsis(`Story about ${subject}`, 50);
-    } else if (userMessage.toLowerCase().includes('poem')) {
-      return truncateWithEllipsis(`Poem about ${subject}`, 50);
-    } else {
-      return truncateWithEllipsis(`Writing: ${subject}`, 50);
+    // Extract content type (poem, story, etc.) for more specific titles
+    const contentMatches = userMessage.match(/\b(poem|story|essay|article|blog post|letter)\b/i);
+    const contentType = contentMatches ? contentMatches[0].charAt(0).toUpperCase() + contentMatches[0].slice(1).toLowerCase() : 'Writing';
+    
+    // If the subject starts with the same words as the content type, avoid duplication
+    // e.g., prevent "Poem about poem about apples"
+    if (subject.toLowerCase().startsWith(contentType.toLowerCase())) {
+      return truncateWithEllipsis(`${contentType} about ${subject.substring(contentType.length).trim()}`, 50);
     }
+    
+    return truncateWithEllipsis(`${contentType} about ${subject}`, 50);
   } else if (isAnalysis) {
     return truncateWithEllipsis(`Analysis of ${subject}`, 50);
   } else {
@@ -108,10 +112,13 @@ function generateTopicBasedTitle(userMessage: string, assistantResponse: string)
  * Attempts to extract the main subject from a message
  */
 function extractSubject(message: string): string {
-  // Remove common question starters
+  // Remove common question starters and creative content requests
   let cleaned = message
     .replace(/^(can you|could you|please|hey|hi|hello|would you|i want to|i'd like to)/i, '')
-    .replace(/^(write|create|explain|tell me about|what is|how does)/i, '')
+    // Handle creative requests specifically to avoid doubled content in title generation
+    .replace(/^(write|create|generate|compose|draft)\s+(a|an|the)?\s*(poem|story|essay|article|blog post|letter)\s+(about|on|regarding|concerning|describing|for)?/i, '')
+    // Handle other common request formats
+    .replace(/^(explain|tell me about|what is|how does)/i, '')
     .trim();
   
   // Remove trailing punctuation

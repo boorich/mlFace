@@ -120,11 +120,20 @@ export const useStore = create<State & Actions>()(
           const hasUserMessage = updatedMessages.some(msg => msg.role === 'user');
           const hasAssistantResponse = updatedMessages.some(msg => msg.role === 'assistant');
           
+          // Regenerate titles when:
+          // 1. We have both user and assistant messages
+          // 2. The title hasn't been manually set
+          // 3. Either it's still the default title OR this is the first assistant response
+          const isFirstAssistantResponse = 
+            message.role === 'assistant' && 
+            targetChat.messages.filter(m => m.role === 'assistant').length === 0;
+            
           if (
             updatedMessages.length >= 2 && 
             hasUserMessage &&
             hasAssistantResponse &&
-            !targetChat.titleIsManual
+            !targetChat.titleIsManual &&
+            (targetChat.title === 'New Chat' || isFirstAssistantResponse)
           ) {
             // Set a new auto-generated title
             updatedChat.title = generateChatTitle(updatedMessages);
