@@ -12,6 +12,7 @@ export interface Chat {
   modelId: string;
   createdAt: string;
   updatedAt: string;
+  titleIsManual?: boolean; // Flag to track if title was manually set
 }
 
 export interface Model {

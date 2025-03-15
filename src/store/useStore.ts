@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import { Chat, Message, Model, Settings, ThemeMode } from '../types';
+import { generateChatTitle } from '../lib/chat/generate-title';
 
 interface State {
   chats: Chat[];
@@ -15,7 +16,7 @@ interface Actions {
   setActiveChat: (chatId: string) => void;
   createChat: (modelId: string) => string;
   deleteChat: (chatId: string) => void;
-  updateChatTitle: (chatId: string, title: string) => void;
+  updateChatTitle: (chatId: string, title: string, isManual?: boolean) => void;
   addMessage: (chatId: string, message: Omit<Message, 'id' | 'timestamp'>) => void;
   addModels: (models: Model[]) => void;
   removeModel: (modelId: string) => void;
@@ -52,6 +53,7 @@ export const useStore = create<State & Actions>()(
           modelId,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          titleIsManual: false, // Initially not manually set
         };
         
         set((state) => ({
@@ -76,11 +78,16 @@ export const useStore = create<State & Actions>()(
         });
       },
       
-      updateChatTitle: (chatId, title) => {
+      updateChatTitle: (chatId, title, isManual = true) => {
         set((state) => ({
           chats: state.chats.map((chat) =>
             chat.id === chatId
-              ? { ...chat, title, updatedAt: new Date().toISOString() }
+              ? { 
+                  ...chat, 
+                  title, 
+                  titleIsManual: isManual, // Set the manual flag
+                  updatedAt: new Date().toISOString() 
+                }
               : chat
           ),
         }));
@@ -93,17 +100,38 @@ export const useStore = create<State & Actions>()(
           timestamp: new Date().toISOString(),
         };
         
-        set((state) => ({
-          chats: state.chats.map((chat) =>
-            chat.id === chatId
-              ? {
-                  ...chat,
-                  messages: [...chat.messages, newMessage],
-                  updatedAt: new Date().toISOString(),
-                }
-              : chat
-          ),
-        }));
+        set((state) => {
+          const targetChat = state.chats.find(chat => chat.id === chatId);
+          
+          if (!targetChat) {
+            return state; // No changes if chat doesn't exist
+          }
+          
+          // Update the chat with the new message
+          const updatedMessages = [...targetChat.messages, newMessage];
+          const updatedChat = {
+            ...targetChat,
+            messages: updatedMessages,
+            updatedAt: new Date().toISOString(),
+          };
+          
+          // If this is the second message (first user message + first assistant reply)
+          // and the title hasn't been manually set, generate a new title
+          if (
+            updatedMessages.length >= 2 && 
+            !targetChat.titleIsManual && 
+            targetChat.title === 'New Chat'
+          ) {
+            updatedChat.title = generateChatTitle(updatedMessages);
+          }
+          
+          // Return updated state
+          return {
+            chats: state.chats.map(chat => 
+              chat.id === chatId ? updatedChat : chat
+            ),
+          };
+        });
       },
       
       addModels: (models) => {

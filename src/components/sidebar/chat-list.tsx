@@ -29,7 +29,8 @@ export function ChatList() {
   
   const saveEditedTitle = (chatId: string) => {
     if (editingTitle.trim()) {
-      updateChatTitle(chatId, editingTitle);
+      // Pass true to mark this as a manually set title
+      updateChatTitle(chatId, editingTitle, true);
     }
     setEditingChatId(null);
   };
@@ -96,17 +97,19 @@ export function ChatList() {
                           e.stopPropagation();
                           startEditingChat(chat.id, chat.title);
                         }}
+                        title="Edit chat title"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-destructive"
+                        className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteChat(chat.id);
                         }}
+                        title="Delete chat"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
