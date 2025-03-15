@@ -44,17 +44,4 @@ export function generateChatTitle(messages: Message[]): string {
   }
   
   return title;
-}</function_results>
-
-
-
-
-
-
-
-
-Now I need to update the types to add a flag for tracking whether a title was manually set:
-
-<function_calls>
-<invoke name="edit_file">
-<parameter name="path">/Users/martinmaurer/Projects/mlFace/src/types/index.ts
+}
