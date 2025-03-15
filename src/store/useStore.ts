@@ -115,13 +115,18 @@ export const useStore = create<State & Actions>()(
             updatedAt: new Date().toISOString(),
           };
           
-          // If this is the second message (first user message + first assistant reply)
+          // If we have at least one user message and one assistant reply (or more messages)
           // and the title hasn't been manually set, generate a new title
+          const hasUserMessage = updatedMessages.some(msg => msg.role === 'user');
+          const hasAssistantResponse = updatedMessages.some(msg => msg.role === 'assistant');
+          
           if (
             updatedMessages.length >= 2 && 
-            !targetChat.titleIsManual && 
-            targetChat.title === 'New Chat'
+            hasUserMessage &&
+            hasAssistantResponse &&
+            !targetChat.titleIsManual
           ) {
+            // Set a new auto-generated title
             updatedChat.title = generateChatTitle(updatedMessages);
           }
           
